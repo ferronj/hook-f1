@@ -1,0 +1,13 @@
+name: f1-markov
+channels:
+  - conda-forge
+
+dependencies:
+  - python=3.12
+  - numpy
+  - pandas
+  - scipy
+  - pyyaml
+  - pymc>=5.28
+  - arviz
+  - pip

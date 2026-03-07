@@ -1,0 +1,76 @@
+# =============================================================================
+# F1 Dirichlet-Multinomial Model Evaluation Configuration
+# =============================================================================
+# Usage: python evaluate_models.py --config config.yaml
+
+# --- Data ---
+data:
+  dir: "data"                  # Path to Kaggle CSV directory
+  min_year: 2010                  # Earliest season to include (null = all)
+  max_year: null                  # Latest season to include (null = all)
+
+# --- Models to evaluate ---
+# Each entry creates one ModelAdapter. Set `enabled: false` to skip.
+models:
+  - name: stage1
+    enabled: true
+    params:
+      prior_alpha: 1.0
+
+  - name: stage1
+    enabled: true
+    params:
+      prior_alpha: 0.5
+
+  - name: stage2
+    enabled: true
+    params:
+      prior_alpha_global: 1.0
+      kappa_init: 10.0
+      kappa_bounds: [0.1, 500.0]
+
+  - name: stage3
+    enabled: true
+    params:
+      prior_alpha_global: 1.0
+      prior_alpha_constructor: 1.0
+      kappa_init: [10.0, 10.0]
+      kappa_bounds: [[0.1, 500.0], [0.01, 500.0]]
+
+# --- Split strategies ---
+# Each entry creates one SplitStrategy. Set `enabled: false` to skip.
+splits:
+  - name: temporal_holdout
+    enabled: true
+    params:
+      cutoff_years: [2024]
+
+  - name: rolling_origin
+    enabled: true
+    params:
+      min_train_seasons: 3
+
+  - name: leave_one_season_out
+    enabled: false
+    params: {}
+
+  - name: leave_one_round_out
+    enabled: false
+    params:
+      seasons: [2023]             # null = all seasons (can be very slow)
+
+# --- Output ---
+output:
+  dir: "results"                  # Directory for output files
+  prefix: "eval"                  # File prefix (e.g. eval_model_summary.csv)
+  save_per_observation: true      # Save full per-obs predictions (large)
+  save_fold_results: true         # Save per-fold aggregate table
+  save_head_to_head: true         # Save pairwise model comparisons
+
+# --- Display ---
+display:
+  verbose: true                   # Print progress during evaluation
+  top_n_drivers: 10               # Drivers to show in per-driver breakdown
+  show_calibration: true          # Print calibration table
+  show_prev_position_breakdown: true
+  show_per_driver_breakdown: true
