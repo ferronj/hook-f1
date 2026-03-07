@@ -1,10 +1,10 @@
 """
-Interactive Streamlit dashboard for 2026 Australian GP simulation results.
+Interactive Streamlit dashboard for F1 race simulation results.
 
-Run: micromamba run -n f1-markov streamlit run dashboard_2026_australia.py
+Run: micromamba run -n f1-markov streamlit run dashboard.py
 
-Supports any number of stage models + composite. When Stage 10 is added to the
-simulation, it will appear here automatically (no dashboard code changes needed).
+Auto-discovers all data/sim_*.json files and presents a race selector.
+Supports any number of stage models + composite per race.
 """
 
 import json
@@ -16,19 +16,44 @@ import streamlit as st
 from pathlib import Path
 
 st.set_page_config(
-    page_title="F1 2026 Australian GP — Simulation Dashboard",
+    page_title="F1 Race Simulation Dashboard",
     page_icon="🏎️",
     layout="wide",
 )
 
-# --- Load data ---
+# =====================================================================
+# DATA LOADING — discover all sim files
+# =====================================================================
 @st.cache_data
-def load_data():
-    data_path = Path(__file__).parent / "data" / "sim_2026_australia.json"
-    with open(data_path) as f:
-        return json.load(f)
+def discover_races():
+    """Scan data/ for sim_*.json files and return {race_name: data_dict}."""
+    data_dir = Path(__file__).parent / "data"
+    files = sorted(data_dir.glob("sim_*.json"))
+    races = {}
+    for f in files:
+        with open(f) as fh:
+            d = json.load(fh)
+        races[d["race"]] = d
+    return races
 
-data = load_data()
+
+races = discover_races()
+
+if not races:
+    st.error("No simulation files found in `data/sim_*.json`.")
+    st.stop()
+
+# =====================================================================
+# SIDEBAR — race selector
+# =====================================================================
+race_names = list(races.keys())
+race_name = st.sidebar.selectbox(
+    "🏁 Select Race",
+    race_names,
+    index=len(race_names) - 1,  # default to most recent
+)
+
+data = races[race_name]
 
 # Build model labels dynamically from JSON
 MODEL_KEYS = list(data["models"].keys())
@@ -45,10 +70,16 @@ def get_drivers_df(model_key):
     return df
 
 
+# Sidebar info
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"**{len(races)}** race(s) available")
+st.sidebar.markdown(f"**{len(STAGE_KEYS)}** stage models + composite")
+st.sidebar.markdown(f"Training: {data['training_years']}")
+
 # =====================================================================
 # HEADER
 # =====================================================================
-st.title("🏁 2026 Australian Grand Prix — Simulation Dashboard")
+st.title(f"🏁 {data['race']} — Simulation Dashboard")
 st.markdown(
     f"**{data['circuit']}** · {data['date']} · "
     f"**{data['n_sims']:,}** Monte Carlo simulations per model · "
@@ -57,7 +88,7 @@ st.markdown(
 )
 
 # =====================================================================
-# KEY STORYLINES
+# KEY STORYLINES — auto-generated from data
 # =====================================================================
 st.header("📰 Key Storylines")
 
@@ -66,33 +97,42 @@ comp_key = "composite" if "composite" in MODEL_KEYS else MODEL_KEYS[-1]
 ens = get_drivers_df(comp_key)
 
 story_cols = st.columns(4)
+
+# Story 1: Title fight — top 2 drivers by P(win)
 with story_cols[0]:
-    st.markdown("**Verstappen vs Norris**")
-    ver = ens[ens["name"] == "Max Verstappen"].iloc[0]
-    nor = ens[ens["name"] == "Lando Norris"].iloc[0]
-    st.markdown(f"VER: {ver['p_win']:.1%} win, {ver['p_podium']:.1%} podium")
-    st.markdown(f"NOR: {nor['p_win']:.1%} win, {nor['p_podium']:.1%} podium")
+    d1, d2 = ens.iloc[0], ens.iloc[1]
+    st.markdown(f"**{d1['abbreviation']} vs {d2['abbreviation']}**")
+    st.markdown(f"{d1['abbreviation']}: {d1['p_win']:.1%} win, {d1['p_podium']:.1%} podium")
+    st.markdown(f"{d2['abbreviation']}: {d2['p_win']:.1%} win, {d2['p_podium']:.1%} podium")
 
+# Story 2: Best of the rest — 3rd place driver
 with story_cols[1]:
-    st.markdown("**Hamilton at Ferrari**")
-    ham = ens[ens["name"] == "Lewis Hamilton"].iloc[0]
-    lec = ens[ens["name"] == "Charles Leclerc"].iloc[0]
-    st.markdown(f"HAM: {ham['p_podium']:.1%} podium (E[pos]={ham['e_pos']:.1f})")
-    st.markdown(f"LEC: {lec['p_podium']:.1%} podium (E[pos]={lec['e_pos']:.1f})")
+    d3 = ens.iloc[2]
+    st.markdown(f"**Best of the Rest: {d3['name']}**")
+    st.markdown(f"P(win): {d3['p_win']:.1%}")
+    st.markdown(f"P(podium): {d3['p_podium']:.1%}")
+    st.markdown(f"E[pos]: {d3['e_pos']:.1f}")
 
+# Story 3: Constructor battle — top 2 constructors
 with story_cols[2]:
-    st.markdown("**Cadillac Debut**")
-    bot = ens[ens["name"] == "Valtteri Bottas"].iloc[0]
-    per = ens[ens["name"] == "Sergio Perez"].iloc[0]
-    st.markdown(f"BOT: {bot['p_points']:.1%} points finish")
-    st.markdown(f"PER: {per['p_points']:.1%} points finish")
+    team_pod = {}
+    for team in ens["team"].unique():
+        td = ens[ens["team"] == team]
+        team_pod[team] = 1 - np.prod(1 - td["p_podium"].values)
+    top_teams = sorted(team_pod, key=team_pod.get, reverse=True)[:2]
+    st.markdown(f"**{top_teams[0]} vs {top_teams[1]}**")
+    st.markdown(f"{top_teams[0]}: {team_pod[top_teams[0]]:.1%} P(podium)")
+    st.markdown(f"{top_teams[1]}: {team_pod[top_teams[1]]:.1%} P(podium)")
 
+# Story 4: Biggest underdog — highest P(podium) outside top 5
 with story_cols[3]:
-    st.markdown("**Piastri's Home Race**")
-    pia = ens[ens["name"] == "Oscar Piastri"].iloc[0]
-    st.markdown(f"P(win): {pia['p_win']:.1%}")
-    st.markdown(f"P(podium): {pia['p_podium']:.1%}")
-    st.markdown(f"E[pos]: {pia['e_pos']:.1f}")
+    underdogs = ens.iloc[5:]  # outside top 5 by E[pos]
+    if len(underdogs) > 0:
+        best_ud = underdogs.sort_values("p_podium", ascending=False).iloc[0]
+        st.markdown(f"**Underdog: {best_ud['name']}**")
+        st.markdown(f"Ranked {best_ud['rank']}th overall")
+        st.markdown(f"P(podium): {best_ud['p_podium']:.1%}")
+        st.markdown(f"{best_ud['team']}")
 
 # =====================================================================
 # MODEL SELECTOR
@@ -112,7 +152,7 @@ model_key = st.radio(
 model_info = data["models"][model_key]
 st.info(model_info["description"])
 params = model_info["params"]
-if isinstance(list(params.values())[0], (int, float)):
+if params and isinstance(list(params.values())[0], (int, float)):
     param_str = " · ".join(f"**{k}** = {v:.3f}" for k, v in params.items())
 else:
     param_str = " · ".join(f"**{k}** = {v}" for k, v in params.items())
@@ -287,7 +327,7 @@ with col_comp1:
     st.plotly_chart(fig_comp, use_container_width=True)
 
 with col_comp2:
-    # Expected position: scatter plot of first two stages, colored by team
+    # Expected position: scatter plot of first vs last stage, colored by team
     if len(STAGE_KEYS) >= 2:
         sk_x, sk_y = STAGE_KEYS[0], STAGE_KEYS[-1]
         label_x = MODEL_LABELS[sk_x].split(":")[0].strip()
@@ -348,36 +388,37 @@ st.dataframe(
 )
 
 # =====================================================================
-# 2025 CALIBRATION CHECK
+# CALIBRATION CHECK (conditional — only if data has calibration info)
 # =====================================================================
-st.header("🎯 2025 Calibration Check")
-st.markdown(
-    "How well would our models have predicted the **2025 Australian GP**? "
-    "Actual top 3: **Norris, Verstappen, Russell**."
-)
+cal = data.get("calibration_2025")
+if cal:
+    st.header("🎯 Calibration Check")
+    actual_top3 = cal.get("top3", [])
+    actual_top10 = cal.get("top10", [])
+    cal_race = cal.get("race", "prior season")
+    top3_str = ", ".join(f"**{d}**" for d in actual_top3)
+    st.markdown(
+        f"How well would our models have predicted the **{cal_race}**? "
+        f"Actual top 3: {top3_str}."
+    )
 
-cal = data.get("calibration_2025", {})
-actual_top3 = cal.get("top3", [])
-actual_top10 = cal.get("top10", [])
+    cal_model_keys = MODEL_KEYS
+    n_cal = len(cal_model_keys)
+    cal_cols = st.columns(min(n_cal, 4))
 
-# Show calibration for all models
-cal_model_keys = MODEL_KEYS
-n_cal = len(cal_model_keys)
-cal_cols = st.columns(min(n_cal, 4))
-
-for i, mk in enumerate(cal_model_keys):
-    mdf = get_drivers_df(mk)
-    pred_top3 = mdf["name"].tolist()[:3]
-    correct = sum(1 for d in pred_top3 if d in actual_top3)
-    in_top10 = sum(1 for d in mdf["name"].tolist()[:10] if d in actual_top10)
-    short_label = MODEL_LABELS[mk].split(":")[0].strip() if ":" in MODEL_LABELS[mk] else MODEL_LABELS[mk]
-    with cal_cols[i % len(cal_cols)]:
-        st.subheader(short_label)
-        st.metric("Correct in Top 3", f"{correct}/3")
-        st.metric("Top 10 Overlap", f"{in_top10}/10")
-        for j, name in enumerate(pred_top3):
-            marker = "✅" if name in actual_top3 else "❌"
-            st.markdown(f"P{j+1}: {marker} {name}")
+    for i, mk in enumerate(cal_model_keys):
+        mdf = get_drivers_df(mk)
+        pred_top3 = mdf["name"].tolist()[:3]
+        correct = sum(1 for d in pred_top3 if d in actual_top3)
+        in_top10 = sum(1 for d in mdf["name"].tolist()[:10] if d in actual_top10)
+        short_label = MODEL_LABELS[mk].split(":")[0].strip() if ":" in MODEL_LABELS[mk] else MODEL_LABELS[mk]
+        with cal_cols[i % len(cal_cols)]:
+            st.subheader(short_label)
+            st.metric("Correct in Top 3", f"{correct}/3")
+            st.metric("Top 10 Overlap", f"{in_top10}/10")
+            for j, name in enumerate(pred_top3):
+                marker = "✅" if name in actual_top3 else "❌"
+                st.markdown(f"P{j+1}: {marker} {name}")
 
 # =====================================================================
 # CONSTRUCTOR ANALYSIS
