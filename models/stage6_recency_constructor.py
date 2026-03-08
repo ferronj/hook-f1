@@ -548,9 +548,12 @@ class RecencyConstructorDirichletF1:
         self.w_ = best_w
         self.opt_result_ = result
 
-        # Step 4: Store final constructor pis
+        # Step 4: Store final constructor pis and weighted counts
         self.constructor_pis_ = c_pis_final
+        self._weighted_constructor_counts_ = weighted_c_final
         self.constructor_ids_ = sorted(self.constructor_pis_.keys())
+        # Store ref_year for incorporate_race (one year past training data)
+        self._ref_year_ = int(meta_df["season"].max()) + 1
 
         return self
 
@@ -637,6 +640,64 @@ class RecencyConstructorDirichletF1:
                 alpha = alpha + self.kappa_k_ * k_pi
         row = alpha[prev_position]
         return row / row.sum()
+
+    # --- In-season update ---
+
+    def incorporate_race(self, race_results, season_year):
+        """
+        Update model state with observed race results (no hyperparameter refit).
+
+        Adds observations to global counts, driver-constructor counts,
+        and weighted constructor counts. Recomputes the affected pis.
+
+        Parameters
+        ----------
+        race_results : list of (driver_id, constructor_id, prev_position, finish_position)
+        season_year : int
+            Year of the observed race (e.g. 2026).
+        """
+        self._check_fitted()
+        weight = self.w_ ** (self._ref_year_ - season_year)
+
+        for did, cid, prev_pos, finish_pos in race_results:
+            # Clamp positions to valid range
+            prev_pos = min(prev_pos, N_PREV_STATES - 1)
+            finish_pos = min(finish_pos, N_OUTCOMES - 1)
+
+            # Update global counts and pi
+            self.global_counts_[prev_pos, finish_pos] += 1
+
+            # Update driver-constructor counts
+            if did not in self.driver_constructor_counts_:
+                self.driver_constructor_counts_[did] = {}
+            if cid not in self.driver_constructor_counts_[did]:
+                self.driver_constructor_counts_[did][cid] = np.zeros(
+                    (N_PREV_STATES, N_OUTCOMES), dtype=int
+                )
+            self.driver_constructor_counts_[did][cid][prev_pos, finish_pos] += 1
+
+            # Update weighted constructor counts
+            if cid not in self._weighted_constructor_counts_:
+                self._weighted_constructor_counts_[cid] = np.zeros(
+                    (N_PREV_STATES, N_OUTCOMES), dtype=float
+                )
+            self._weighted_constructor_counts_[cid][prev_pos, finish_pos] += weight
+
+            # Track latest constructor
+            self.driver_latest_constructor_[did] = cid
+
+        # Recompute global pi
+        g_alpha = self.prior_alpha_global + self.global_counts_
+        self.global_pi_ = g_alpha / g_alpha.sum(axis=1, keepdims=True)
+
+        # Recompute affected constructor pis
+        affected_cids = set(cid for _, cid, _, _ in race_results)
+        for cid in affected_cids:
+            wc = self._weighted_constructor_counts_[cid]
+            c_alpha = self.prior_alpha_constructor + wc
+            self.constructor_pis_[cid] = c_alpha / c_alpha.sum(
+                axis=1, keepdims=True
+            )
 
     # --- Diagnostics ---
 

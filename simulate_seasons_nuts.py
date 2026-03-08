@@ -159,19 +159,86 @@ def precompute_probs_map(model, drivers):
 
 
 def precompute_probs_bayes(model, drivers, n_posterior_draws=200):
-    """Precompute Bayesian (posterior-averaged) probs for Stage 9."""
+    """Precompute Bayesian (posterior-averaged) probs for Stage 9.
+
+    Optimized: PL sampling only depends on composite strength (not prev_position),
+    so we run it once per (driver, posterior_draw) and apply DNF + Markov correction
+    for each prev_position. This is ~22x faster than the naive approach.
+    """
+    from stage8_plackett_luce import pl_sample_ranking
+
     prob_cache = {}
+    n_field = 20
+
+    # Build field strengths (same logic as _compute_position_probs)
+    all_strengths = list(model.driver_strengths_.values())
+    if len(all_strengths) == 0:
+        all_strengths = [1.0] * n_field
+    sorted_strengths = sorted(all_strengths, reverse=True)
+    field_strengths = sorted_strengths[:n_field - 1]
+    while len(field_strengths) < n_field - 1:
+        field_strengths.append(np.median(all_strengths))
+    field_strengths = np.array(field_strengths)
+
+    n_total = model.n_posterior_samples_
+    draw_indices = np.linspace(0, n_total - 1,
+                               min(n_posterior_draws, n_total),
+                               dtype=int)
+    n_draws = len(draw_indices)
+
     for did in drivers:
         cid = drivers[did][0]
+
+        if did not in model.driver_strengths_:
+            # No posterior samples for unknown drivers — use MAP fallback
+            cache = np.zeros((START + 1, N_OUTCOMES))
+            for prev in range(START + 1):
+                cache[prev] = model.predict_proba_new_driver(prev, constructor_id=cid)
+            prob_cache[did] = cache
+            continue
+
+        d_samples = model.driver_strengths_samples_.get(did, None)
+        c_samples = model.constructor_strengths_samples_.get(cid, None)
+        p_dnf = model.dnf_rates_.get(did, model.global_dnf_rate_)
+
+        # Average finish probs over posterior draws (PL sampling — expensive part)
+        avg_finish_probs = np.zeros(n_field)
+        rng = np.random.default_rng(
+            hash(str(did)) % (2**31) if did else 42
+        )
+        print(f"  [{list(drivers.keys()).index(did)+1}/{len(drivers)}] "
+              f"{drivers[did][1]}: {n_draws} posterior draws...", end="", flush=True)
+        for idx in draw_indices:
+            d_str = d_samples[idx] if d_samples is not None else 1.0
+            c_str = c_samples[idx] if c_samples is not None else 1.0
+            composite = d_str * c_str
+
+            all_field = np.array([composite] + list(field_strengths))
+            all_field = np.maximum(all_field, 1e-10)
+
+            pos_probs_matrix = pl_sample_ranking(all_field, rng, model.n_mc_samples)
+            avg_finish_probs += pos_probs_matrix[0]
+
+        avg_finish_probs /= n_draws
+        print(" done", flush=True)
+
+        # Now apply DNF + Markov correction for each prev_position (cheap)
         cache = np.zeros((START + 1, N_OUTCOMES))
         for prev in range(START + 1):
-            if did in model.driver_strengths_:
-                cache[prev] = model.predict_proba_bayesian(
-                    did, prev, constructor_id=cid,
-                    n_posterior_draws=n_posterior_draws,
-                )
-            else:
-                cache[prev] = model.predict_proba_new_driver(prev, constructor_id=cid)
+            probs = np.zeros(N_OUTCOMES)
+            probs[0] = p_dnf
+            remaining_prob = 1.0 - p_dnf
+            for j in range(min(len(avg_finish_probs), 20)):
+                probs[j + 1] = remaining_prob * avg_finish_probs[j]
+
+            if model.global_correction_ is not None:
+                correction = model.global_correction_[prev]
+                probs *= correction
+                probs = np.maximum(probs, 1e-10)
+                probs /= probs.sum()
+
+            cache[prev] = probs
+
         prob_cache[did] = cache
     return prob_cache
 

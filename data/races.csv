@@ -1148,3 +1148,4 @@ raceId,year,round,circuitId,name,date,time,url,fp1_date,fp1_time,fp2_date,fp2_ti
 1166,2025,22,44,Las Vegas Grand Prix,2025-11-22,06:00:00,https://en.wikipedia.org/wiki/2025_Las_Vegas_Grand_Prix,2025-11-21,02:30:00,2025-11-21,06:00:00,2025-11-22,02:30:00,2025-11-22,06:00:00,\N,\N
 1167,2025,23,78,Qatar Grand Prix,2025-11-30,16:00:00,https://en.wikipedia.org/wiki/2025_Qatar_Grand_Prix,2025-11-28,14:30:00,2025-11-28,18:00:00,2025-11-29,15:00:00,2025-11-29,18:00:00,\N,\N
 1168,2025,24,24,Abu Dhabi Grand Prix,2025-12-07,13:00:00,https://en.wikipedia.org/wiki/2025_Abu_Dhabi_Grand_Prix,2025-12-05,09:30:00,2025-12-05,13:00:00,2025-12-06,10:30:00,2025-12-06,14:00:00,\N,\N
+1169,2026,1,1,Australian Grand Prix,2026-03-08,04:00:00,https://en.wikipedia.org/wiki/2026_Australian_Grand_Prix,\N,\N,\N,\N,\N,\N,\N,\N,\N,\N
