@@ -390,7 +390,7 @@ st.dataframe(
 # =====================================================================
 # CALIBRATION CHECK (conditional — only if data has calibration info)
 # =====================================================================
-cal = data.get("calibration_2025")
+cal = data.get("calibration") or data.get("calibration_2025")
 if cal:
     st.header("🎯 Calibration Check")
     actual_top3 = cal.get("top3", [])

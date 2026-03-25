@@ -1,13 +1,13 @@
 # F1 Markov Model Project
 
 ## Environment
-- Python environment: `micromamba run -n f1-markov python3 <script>`
-- Do NOT use `python` (not found); always use `python3` via micromamba
+- Python environment: `uv run python <script>` (or `micromamba run -n f1-markov python3 <script>`)
+- Project uses `uv` with `pyproject.toml` for dependency management
 
 ## Project Structure
 
 ### Production Pipeline
-- `simulate_2026_australia.py` — Monte Carlo simulation (Stage 6 + Stage 8 + Stage 9 + Ensemble), outputs JSON
+- `simulate_race.py` — General-purpose Monte Carlo race simulation with CLI args (replaces hardcoded per-race scripts)
 - `dashboard.py` — Multi-race Streamlit dashboard, auto-discovers `data/sim_*.json` files
 - `generate_2025_data.py` — Scrapes 2025 F1 season data and appends to Ergast CSVs
 
@@ -42,7 +42,7 @@ stage3_constructor.py  (shared: F1DataLoader, constants, prepare_transitions, co
   │     └── stage9_bayesian_ss.py    (adds Bayesian state-space, imports PL utilities from stage8)
   └── stage9_bayesian_ss.py          (also imports directly from stage3)
 ```
-`simulate_2026_australia.py` adds `models/` to sys.path and imports from stages 6, 8, 9.
+`simulate_race.py` adds `models/` to sys.path and imports from stages 6, 8, 9.
 `dashboard.py` has NO model imports — reads only JSON.
 
 ## Key Learnings
@@ -80,7 +80,28 @@ McLaren=1, Williams=3, Ferrari=6, Red Bull=9, Audi=15 (was Sauber), Aston Martin
 - The 2025 data is appended to the original CSVs — to regenerate, remove 2025 entries first
 - Simulation results stored as JSON in `data/sim_*.json` (consumed by dashboard)
 
+## Simulation CLI
+```bash
+# Round 1 (auto-detects race metadata and roster from CSVs):
+uv run python simulate_race.py --season 2026 --round 1
+
+# Round 2 (uses R1 results as starting state):
+uv run python simulate_race.py --season 2026 --round 2
+
+# With roster override for new/changed drivers:
+uv run python simulate_race.py --season 2026 --round 1 --roster data/roster_2026.json
+
+# Explicit metadata for future races not yet in CSVs:
+uv run python simulate_race.py --season 2026 --round 1 \
+    --race-name "Australian Grand Prix" --circuit "Albert Park, Melbourne" --date 2026-03-08
+```
+- Auto-detects race name, circuit, date from `races.csv` + `circuits.csv`
+- Auto-detects driver roster from most recent race results
+- For round > 1, uses previous round finishing positions as starting state
+- Outputs `data/sim_{season}_{race_slug}.json` for the dashboard
+- `--roster` accepts a JSON override: `{"driver_id": {"constructor_id": N, "name": "...", "abbreviation": "..."}}`
+
 ## Dashboard
-- **Run**: `micromamba run -n f1-markov streamlit run dashboard.py`
-- **Dependencies**: streamlit, plotly (installed in f1-markov env)
+- **Run**: `uv run streamlit run dashboard.py`
+- **Dependencies**: streamlit, plotly (in pyproject.toml)
 - **Features**: Model selector (Stage 6/Ensemble/Stage 9), podium prediction, full grid table, position distributions, model comparison, constructor analysis, position heatmap
