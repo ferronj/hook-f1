@@ -279,7 +279,7 @@ class TimeVaryingPlackettLuceF1:
 
             for alpha in self.alpha_candidates:
                 # Fit on train data
-                strengths = self._fit_sequential(train_races, alpha)
+                strengths, _, _ = self._fit_sequential(train_races, alpha)
 
                 # Evaluate on validation data
                 val_ll = 0.0
@@ -317,7 +317,9 @@ class TimeVaryingPlackettLuceF1:
         print(f"  Selected alpha = {self.alpha_}")
 
         # Fit on full data with best alpha
-        all_strengths = self._fit_sequential(races, self.alpha_)
+        all_strengths, self._log_driver_, self._log_constructor_ = (
+            self._fit_sequential(races, self.alpha_)
+        )
 
         # Separate driver and constructor strengths
         self.driver_strengths_ = {}
@@ -457,7 +459,7 @@ class TimeVaryingPlackettLuceF1:
         for c_key, log_s in log_constructor.items():
             strengths[c_key] = np.exp(log_s)
 
-        return strengths
+        return strengths, log_driver, log_constructor
 
     def _compute_dnf_rates(self, meta_df):
         """Compute per-driver DNF rates with shrinkage."""
@@ -477,11 +479,137 @@ class TimeVaryingPlackettLuceF1:
         self.global_dnf_rate_ = global_dnfs / max(global_races, 1)
         tau = self.dnf_shrinkage
 
+        # Store raw counters for incremental updates
+        self._dnf_total_races_ = dict(total_races)
+        self._dnf_total_dnfs_ = dict(total_dnfs)
+        self._dnf_global_races_ = global_races
+        self._dnf_global_dnfs_ = global_dnfs
+
         self.dnf_rates_ = {}
         for did in total_races:
             n = total_races[did]
             empirical = total_dnfs[did] / max(n, 1)
             # Shrinkage toward global
+            weight = n / (n + tau)
+            self.dnf_rates_[did] = (
+                weight * empirical + (1 - weight) * self.global_dnf_rate_
+            )
+
+    # --- In-season update ---
+
+    def incorporate_race(self, race_results):
+        """
+        Process one observed race through exponential smoothing (no refit).
+
+        This is one iteration of the _fit_sequential inner loop, applied to
+        the stored log-strength state.
+
+        Parameters
+        ----------
+        race_results : list of (driver_id, constructor_id, finish_position, is_dnf)
+        """
+        self._check_fitted()
+        alpha = self.alpha_
+
+        # Extract finisher ranking
+        finishers = [
+            (did, cid, pos) for did, cid, pos, is_dnf
+            in race_results if not is_dnf
+        ]
+        if len(finishers) < 2:
+            return
+
+        finishers.sort(key=lambda x: x[2])
+        ranking = [f[0] for f in finishers]
+        driver_constructors = {f[0]: f[1] for f in finishers}
+
+        # Current composite strengths (exp space) for MM algorithm
+        race_strengths = {}
+        for did in ranking:
+            log_d = self._log_driver_.get(did, 0.0)
+            cid = driver_constructors[did]
+            log_c = self._log_constructor_.get(f"C_{cid}", 0.0)
+            race_strengths[did] = np.exp(log_d + log_c)
+
+        # MM updates to get race-level strength estimates
+        updated = race_strengths.copy()
+        for _ in range(self.mm_iters):
+            updated = pl_mm_update(updated, [ranking])
+
+        # Update log-strengths via exponential smoothing
+        log_updated = {
+            did: np.log(max(updated[did], 1e-300)) for did in ranking
+        }
+
+        # Driver update: log_d_new = log_composite - log_constructor
+        for did in ranking:
+            cid = driver_constructors[did]
+            log_c = self._log_constructor_.get(f"C_{cid}", 0.0)
+            log_d_new = log_updated[did] - log_c
+
+            if did in self._log_driver_:
+                self._log_driver_[did] = (
+                    alpha * self._log_driver_[did] + (1 - alpha) * log_d_new
+                )
+            else:
+                self._log_driver_[did] = log_d_new
+
+        # Constructor update
+        for cid in set(driver_constructors.values()):
+            c_key = f"C_{cid}"
+            team_drivers = [
+                d for d, c in driver_constructors.items() if c == cid
+            ]
+            if len(team_drivers) > 0:
+                avg_log_composite = np.mean([
+                    log_updated[d] for d in team_drivers
+                ])
+                avg_log_driver = np.mean([
+                    self._log_driver_.get(d, 0.0) for d in team_drivers
+                ])
+                log_c_new = avg_log_composite - avg_log_driver
+
+                if c_key in self._log_constructor_:
+                    self._log_constructor_[c_key] = (
+                        alpha * self._log_constructor_[c_key]
+                        + (1 - alpha) * log_c_new
+                    )
+                else:
+                    self._log_constructor_[c_key] = log_c_new
+
+        # Center driver log-strengths at 0
+        if self._log_driver_:
+            mean_log = np.mean(list(self._log_driver_.values()))
+            for did in self._log_driver_:
+                self._log_driver_[did] -= mean_log
+
+        # Update exp-space strengths
+        self.driver_strengths_ = {
+            did: np.exp(log_s) for did, log_s in self._log_driver_.items()
+        }
+        self.constructor_strengths_ = {
+            int(c_key[2:]): np.exp(log_s)
+            for c_key, log_s in self._log_constructor_.items()
+        }
+
+        # Update DNF rates incrementally
+        for did, cid, pos, is_dnf in race_results:
+            n_prev = self._dnf_total_races_.get(did, 0)
+            n_dnf_prev = self._dnf_total_dnfs_.get(did, 0)
+            self._dnf_total_races_[did] = n_prev + 1
+            if is_dnf:
+                self._dnf_total_dnfs_[did] = n_dnf_prev + 1
+                self._dnf_global_dnfs_ += 1
+            self._dnf_global_races_ += 1
+
+        # Recompute DNF rates
+        self.global_dnf_rate_ = (
+            self._dnf_global_dnfs_ / max(self._dnf_global_races_, 1)
+        )
+        tau = self.dnf_shrinkage
+        for did in self._dnf_total_races_:
+            n = self._dnf_total_races_[did]
+            empirical = self._dnf_total_dnfs_.get(did, 0) / max(n, 1)
             weight = n / (n + tau)
             self.dnf_rates_[did] = (
                 weight * empirical + (1 - weight) * self.global_dnf_rate_

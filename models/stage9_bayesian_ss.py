@@ -397,6 +397,11 @@ class BayesianStateSpaceF1:
             races, self.sigma_d_, self.sigma_c_
         )
 
+        # Store trajectory state for incorporate_race()
+        self._theta_ = theta_final
+        self._pidx_ = pidx_final
+        self._races_ = races
+
         # Extract final log-strengths (last appearance of each entity)
         self.driver_strengths_ = {}
         for did in pidx_final.driver_ids:
@@ -432,10 +437,11 @@ class BayesianStateSpaceF1:
 
         return self
 
-    def _fit_map(self, races, sigma_d, sigma_c):
+    def _fit_map(self, races, sigma_d, sigma_c, theta0=None):
         """Run MAP optimization via L-BFGS-B."""
         pidx = ParamIndex(races)
-        theta0 = np.zeros(pidx.n_params)
+        if theta0 is None:
+            theta0 = np.zeros(pidx.n_params)
 
         result = optimize.minimize(
             neg_log_posterior,
@@ -505,10 +511,123 @@ class BayesianStateSpaceF1:
         self.global_dnf_rate_ = global_dnfs / max(global_races, 1)
         tau = self.dnf_shrinkage
 
+        # Store raw counters for incremental updates
+        self._dnf_total_races_ = dict(total_races)
+        self._dnf_total_dnfs_ = dict(total_dnfs)
+        self._dnf_global_races_ = global_races
+        self._dnf_global_dnfs_ = global_dnfs
+
         self.dnf_rates_ = {}
         for did in total_races:
             n = total_races[did]
             empirical = total_dnfs[did] / max(n, 1)
+            weight = n / (n + tau)
+            self.dnf_rates_[did] = (
+                weight * empirical + (1 - weight) * self.global_dnf_rate_
+            )
+
+    # --- In-season update ---
+
+    def incorporate_race(self, race_results):
+        """
+        Extend trajectory with observed race, re-run MAP with fixed sigma_d/c.
+
+        Warm-starts from previous MAP solution for fast convergence.
+
+        Parameters
+        ----------
+        race_results : list of (driver_id, constructor_id, finish_position, is_dnf)
+        """
+        self._check_fitted()
+
+        # Convert to race dict format
+        max_race_order = max(r["race_order"] for r in self._races_) + 1
+        new_race = {
+            "season": 2026,
+            "race_order": max_race_order,
+            "entries": [
+                (did, cid, pos, is_dnf)
+                for did, cid, pos, is_dnf in race_results
+            ],
+        }
+        self._races_.append(new_race)
+
+        # Build new ParamIndex
+        new_pidx = ParamIndex(self._races_)
+
+        # Build warm-start theta: map old params to new layout
+        theta0 = np.zeros(new_pidx.n_params)
+        old_pidx = self._pidx_
+
+        # Copy driver params from old solution
+        for did in new_pidx.driver_ids:
+            new_appearances = new_pidx.driver_indices[did]
+            if did in old_pidx.driver_indices:
+                old_appearances = old_pidx.driver_indices[did]
+                # Map overlapping race indices
+                old_by_race = {ri: off for ri, off in old_appearances}
+                last_old_val = self._theta_[old_appearances[-1][1]]
+                for ri, new_off in new_appearances:
+                    if ri in old_by_race:
+                        theta0[new_off] = self._theta_[old_by_race[ri]]
+                    else:
+                        # New race: init from last known value
+                        theta0[new_off] = last_old_val
+            # else: new driver, leave at 0.0
+
+        # Copy constructor params
+        for cid in new_pidx.constructor_ids:
+            new_appearances = new_pidx.constructor_indices[cid]
+            if cid in old_pidx.constructor_indices:
+                old_appearances = old_pidx.constructor_indices[cid]
+                old_by_race = {ri: off for ri, off in old_appearances}
+                last_old_val = self._theta_[old_appearances[-1][1]]
+                for ri, new_off in new_appearances:
+                    if ri in old_by_race:
+                        theta0[new_off] = self._theta_[old_by_race[ri]]
+                    else:
+                        theta0[new_off] = last_old_val
+            # else: new constructor, leave at 0.0
+
+        # Re-run MAP with warm start
+        theta_new, pidx_new = self._fit_map(
+            self._races_, self.sigma_d_, self.sigma_c_, theta0=theta0
+        )
+
+        # Update stored state
+        self._theta_ = theta_new
+        self._pidx_ = pidx_new
+
+        # Extract updated final strengths
+        self.driver_strengths_ = {}
+        for did in pidx_new.driver_ids:
+            appearances = pidx_new.driver_indices[did]
+            _, last_off = appearances[-1]
+            self.driver_strengths_[did] = np.exp(theta_new[last_off])
+
+        self.constructor_strengths_ = {}
+        for cid in pidx_new.constructor_ids:
+            appearances = pidx_new.constructor_indices[cid]
+            _, last_off = appearances[-1]
+            self.constructor_strengths_[cid] = np.exp(theta_new[last_off])
+
+        # Update DNF rates incrementally
+        for did, cid, pos, is_dnf in race_results:
+            n_prev = self._dnf_total_races_.get(did, 0)
+            n_dnf_prev = self._dnf_total_dnfs_.get(did, 0)
+            self._dnf_total_races_[did] = n_prev + 1
+            if is_dnf:
+                self._dnf_total_dnfs_[did] = n_dnf_prev + 1
+                self._dnf_global_dnfs_ += 1
+            self._dnf_global_races_ += 1
+
+        self.global_dnf_rate_ = (
+            self._dnf_global_dnfs_ / max(self._dnf_global_races_, 1)
+        )
+        tau = self.dnf_shrinkage
+        for did in self._dnf_total_races_:
+            n = self._dnf_total_races_[did]
+            empirical = self._dnf_total_dnfs_.get(did, 0) / max(n, 1)
             weight = n / (n + tau)
             self.dnf_rates_[did] = (
                 weight * empirical + (1 - weight) * self.global_dnf_rate_
