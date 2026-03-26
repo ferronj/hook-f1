@@ -1,12 +1,23 @@
 [project]
-name = "infallible-mayer"
+name = "hook-f1"
 version = "0.1.0"
-description = "Add your description here"
+description = "Dirichlet-Multinomial Markov and Bayesian state-space models for predicting F1 finishing positions"
 requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.4.3",
     "pandas>=2.3.3",
     "plotly>=6.6.0",
+    "pyyaml>=6.0",
     "scipy>=1.17.1",
     "streamlit>=1.55.0",
 ]
+
+[project.optional-dependencies]
+nuts = [
+    "pymc>=5.0.0",
+    "arviz>=0.15.0",
+    "pytensor>=2.18.0",
+]
+
+[dependency-groups]
+dev = []
