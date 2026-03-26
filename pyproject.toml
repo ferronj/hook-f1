@@ -1,0 +1,23 @@
+[project]
+name = "hook-f1"
+version = "0.1.0"
+description = "Dirichlet-Multinomial Markov and Bayesian state-space models for predicting F1 finishing positions"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "scipy>=1.10.0",
+    "streamlit>=1.30.0",
+    "plotly>=5.18.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+nuts = [
+    "pymc>=5.0.0",
+    "arviz>=0.15.0",
+    "pytensor>=2.18.0",
+]
+
+[dependency-groups]
+dev = []
