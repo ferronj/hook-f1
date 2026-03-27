@@ -39,6 +39,9 @@ from stage6_recency_constructor import (
 from stage8_plackett_luce import TimeVaryingPlackettLuceF1
 from stage9_bayesian_ss import BayesianStateSpaceF1
 
+sys.path.insert(0, str(Path(__file__).parent))
+from config_2026 import race_slug as _config_slug
+
 DATA_DIR = Path(__file__).parent / "data"
 
 TEAM_COLORS = {
@@ -568,7 +571,7 @@ def main():
     if args.output:
         out_path = Path(args.output)
     else:
-        slug = race_name.lower().replace(" ", "_").replace("'", "")
+        slug = _config_slug(round_num) if round_num else race_name.lower().replace(" ", "_").replace("'", "")
         out_path = DATA_DIR / f"sim_{season}_{slug}.json"
 
     with open(out_path, "w") as f:

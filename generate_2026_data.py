@@ -188,6 +188,30 @@ QUALIFYING_RESULTS = {
         ("Carlos Sainz", "Williams", 21),
         ("Lance Stroll", "Aston Martin", 22),
     ],
+    2: [  # Chinese Grand Prix
+        ("Kimi Antonelli", "Mercedes", 1),
+        ("George Russell", "Mercedes", 2),
+        ("Lewis Hamilton", "Ferrari", 3),
+        ("Charles Leclerc", "Ferrari", 4),
+        ("Oscar Piastri", "McLaren", 5),
+        ("Lando Norris", "McLaren", 6),
+        ("Pierre Gasly", "Alpine", 7),
+        ("Max Verstappen", "Red Bull Racing", 8),
+        ("Isack Hadjar", "Red Bull Racing", 9),
+        ("Oliver Bearman", "Haas F1 Team", 10),
+        ("Nico Hulkenberg", "Audi", 11),
+        ("Franco Colapinto", "Alpine", 12),
+        ("Esteban Ocon", "Haas F1 Team", 13),
+        ("Liam Lawson", "Racing Bulls", 14),
+        ("Arvid Lindblad", "Racing Bulls", 15),
+        ("Gabriel Bortoleto", "Audi", 16),
+        ("Carlos Sainz", "Williams", 17),
+        ("Alexander Albon", "Williams", 18),
+        ("Fernando Alonso", "Aston Martin", 19),
+        ("Valtteri Bottas", "Cadillac", 20),
+        ("Lance Stroll", "Aston Martin", 21),
+        ("Sergio Perez", "Cadillac", 22),
+    ],
 }
 
 # ============================================================
@@ -197,29 +221,53 @@ QUALIFYING_RESULTS = {
 # Add results after each race weekend.
 # ============================================================
 RACE_RESULTS = {
-    1: [  # Australian Grand Prix — PLACEHOLDER (update with actual results)
-        ("George Russell", "Mercedes", 1, "1", 58, "1:28:00.000", 25, 1),
-        ("Kimi Antonelli", "Mercedes", 2, "2", 58, "+3.5", 18, 1),
-        ("Oscar Piastri", "McLaren", 3, "3", 58, "+8.2", 15, 1),
-        ("Charles Leclerc", "Ferrari", 4, "4", 58, "+12.1", 12, 1),
-        ("Lando Norris", "McLaren", 5, "5", 58, "+15.6", 10, 1),
-        ("Lewis Hamilton", "Ferrari", 6, "6", 58, "+20.3", 8, 1),
-        ("Isack Hadjar", "Red Bull Racing", 7, "7", 58, "+25.7", 6, 1),
-        ("Liam Lawson", "Racing Bulls", 8, "8", 58, "+30.1", 4, 1),
-        ("Max Verstappen", "Red Bull Racing", 9, "9", 58, "+35.2", 2, 1),
-        ("Gabriel Bortoleto", "Audi", 10, "10", 58, "+40.5", 1, 1),
-        ("Nico Hulkenberg", "Audi", 11, "11", 58, "+42.8", 0, 1),
-        ("Oliver Bearman", "Haas F1 Team", 12, "12", 58, "+45.1", 0, 1),
-        ("Esteban Ocon", "Haas F1 Team", 13, "13", 58, "+48.2", 0, 1),
-        ("Pierre Gasly", "Alpine", 14, "14", 58, "+50.5", 0, 1),
-        ("Alexander Albon", "Williams", 15, "15", 58, "+53.7", 0, 1),
-        ("Franco Colapinto", "Alpine", 16, "16", 58, "+55.9", 0, 1),
-        ("Fernando Alonso", "Aston Martin", 17, "17", 57, "+1 Lap", 0, 1),
-        ("Arvid Lindblad", "Racing Bulls", 18, "18", 57, "+1 Lap", 0, 1),
-        ("Sergio Perez", "Cadillac", 19, "19", 57, "+1 Lap", 0, 1),
-        ("Valtteri Bottas", "Cadillac", 20, "R", 40, "\\N", 0, 130),
-        ("Carlos Sainz", "Williams", 21, "R", 30, "\\N", 0, 130),
-        ("Lance Stroll", "Aston Martin", 22, "R", 15, "\\N", 0, 130),
+    1: [  # Australian Grand Prix (actual results)
+        ("George Russell", "Mercedes", 1, "1", 58, "1:23:06.801", 25, 1),
+        ("Kimi Antonelli", "Mercedes", 2, "2", 58, "+2.974", 18, 1),
+        ("Charles Leclerc", "Ferrari", 3, "3", 58, "+15.519", 15, 1),
+        ("Lewis Hamilton", "Ferrari", 4, "4", 58, "+16.144", 12, 1),
+        ("Lando Norris", "McLaren", 5, "5", 58, "+51.741", 10, 1),
+        ("Max Verstappen", "Red Bull Racing", 6, "6", 58, "+54.617", 8, 1),
+        ("Oliver Bearman", "Haas F1 Team", 7, "7", 57, "+1 Lap", 6, 1),
+        ("Arvid Lindblad", "Racing Bulls", 8, "8", 57, "+1 Lap", 4, 1),
+        ("Gabriel Bortoleto", "Audi", 9, "9", 57, "+1 Lap", 2, 1),
+        ("Pierre Gasly", "Alpine", 10, "10", 57, "+1 Lap", 1, 1),
+        ("Esteban Ocon", "Haas F1 Team", 11, "11", 57, "+1 Lap", 0, 1),
+        ("Alexander Albon", "Williams", 12, "12", 57, "+1 Lap", 0, 1),
+        ("Liam Lawson", "Racing Bulls", 13, "13", 57, "+1 Lap", 0, 1),
+        ("Franco Colapinto", "Alpine", 14, "14", 56, "+2 Laps", 0, 1),
+        ("Carlos Sainz", "Williams", 15, "15", 56, "+2 Laps", 0, 1),
+        ("Sergio Perez", "Cadillac", 16, "16", 55, "+3 Laps", 0, 1),
+        ("Lance Stroll", "Aston Martin", 17, "NC", 43, "\\N", 0, 130),
+        ("Fernando Alonso", "Aston Martin", 18, "R", 21, "\\N", 0, 130),
+        ("Valtteri Bottas", "Cadillac", 19, "R", 15, "\\N", 0, 130),
+        ("Isack Hadjar", "Red Bull Racing", 20, "R", 10, "\\N", 0, 130),
+        ("Oscar Piastri", "McLaren", 21, "DNS", 0, "\\N", 0, 20),
+        ("Nico Hulkenberg", "Audi", 22, "DNS", 0, "\\N", 0, 20),
+    ],
+    2: [  # Chinese Grand Prix (actual results)
+        ("Kimi Antonelli", "Mercedes", 1, "1", 56, "1:33:15.607", 25, 1),
+        ("George Russell", "Mercedes", 2, "2", 56, "+5.515", 18, 1),
+        ("Lewis Hamilton", "Ferrari", 3, "3", 56, "+25.267", 15, 1),
+        ("Charles Leclerc", "Ferrari", 4, "4", 56, "+28.894", 12, 1),
+        ("Oliver Bearman", "Haas F1 Team", 5, "5", 56, "+57.268", 10, 1),
+        ("Pierre Gasly", "Alpine", 6, "6", 56, "+59.647", 8, 1),
+        ("Liam Lawson", "Racing Bulls", 7, "7", 56, "+80.588", 6, 1),
+        ("Isack Hadjar", "Red Bull Racing", 8, "8", 56, "+87.247", 4, 1),
+        ("Carlos Sainz", "Williams", 9, "9", 55, "+1 Lap", 2, 1),
+        ("Franco Colapinto", "Alpine", 10, "10", 55, "+1 Lap", 1, 1),
+        ("Nico Hulkenberg", "Audi", 11, "11", 55, "+1 Lap", 0, 1),
+        ("Arvid Lindblad", "Racing Bulls", 12, "12", 55, "+1 Lap", 0, 1),
+        ("Valtteri Bottas", "Cadillac", 13, "13", 55, "+1 Lap", 0, 1),
+        ("Esteban Ocon", "Haas F1 Team", 14, "14", 55, "+1 Lap", 0, 1),
+        ("Sergio Perez", "Cadillac", 15, "15", 55, "+1 Lap", 0, 1),
+        ("Max Verstappen", "Red Bull Racing", 16, "R", 45, "\\N", 0, 130),
+        ("Fernando Alonso", "Aston Martin", 17, "R", 32, "\\N", 0, 130),
+        ("Lance Stroll", "Aston Martin", 18, "R", 9, "\\N", 0, 130),
+        ("Oscar Piastri", "McLaren", 19, "DNS", 0, "\\N", 0, 20),
+        ("Lando Norris", "McLaren", 20, "DNS", 0, "\\N", 0, 20),
+        ("Gabriel Bortoleto", "Audi", 21, "DNS", 0, "\\N", 0, 20),
+        ("Alexander Albon", "Williams", 22, "DNS", 0, "\\N", 0, 20),
     ],
 }
 
@@ -230,7 +278,7 @@ RACE_RESULTS = {
 def append_csv(filename, rows):
     """Append rows to a CSV file."""
     filepath = os.path.join(DATA_DIR, filename)
-    with open(filepath, "a", newline="") as f:
+    with open(filepath, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         for row in rows:
             writer.writerow(row)
@@ -240,7 +288,7 @@ def get_existing_2026_rounds():
     """Check which 2026 rounds already exist in races.csv."""
     filepath = os.path.join(DATA_DIR, "races.csv")
     existing_rounds = set()
-    with open(filepath, "r") as f:
+    with open(filepath, "r", encoding="utf-8") as f:
         reader = csv.reader(f)
         next(reader)  # skip header
         for row in reader:
@@ -264,7 +312,7 @@ def main():
     # Check for rounds that exist but are missing results
     existing_result_races = set()
     results_filepath = os.path.join(DATA_DIR, "results.csv")
-    with open(results_filepath, "r") as f:
+    with open(results_filepath, "r", encoding="utf-8") as f:
         reader = csv.reader(f)
         next(reader)
         for row in reader:
@@ -288,7 +336,7 @@ def main():
     # ================================================================
     driver_filepath = os.path.join(DATA_DIR, "drivers.csv")
     existing_driver_ids = set()
-    with open(driver_filepath, "r") as f:
+    with open(driver_filepath, "r", encoding="utf-8") as f:
         reader = csv.reader(f)
         next(reader)
         for row in reader:
@@ -308,7 +356,7 @@ def main():
     # ================================================================
     constructor_filepath = os.path.join(DATA_DIR, "constructors.csv")
     existing_constructor_ids = set()
-    with open(constructor_filepath, "r") as f:
+    with open(constructor_filepath, "r", encoding="utf-8") as f:
         reader = csv.reader(f)
         next(reader)
         for row in reader:

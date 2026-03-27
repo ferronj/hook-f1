@@ -12,12 +12,5 @@ dependencies = [
     "streamlit>=1.55.0",
 ]
 
-[project.optional-dependencies]
-nuts = [
-    "pymc>=5.0.0",
-    "arviz>=0.15.0",
-    "pytensor>=2.18.0",
-]
-
 [dependency-groups]
 dev = []

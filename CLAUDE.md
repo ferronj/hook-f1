@@ -3,17 +3,16 @@
 ## Environment
 - Python environment managed with **uv**: `uv run python <script>`
 - Setup: `uv sync` (creates `.venv/` and installs all dependencies from `pyproject.toml`)
-- For NUTS sampling (optional): `uv sync --extra nuts`
 - Do NOT use `micromamba` (legacy); all scripts run via `uv run python`
 
 ## Project Structure
 
 ### Production Pipeline
-- `simulate_race.py` — General-purpose Monte Carlo race simulation with CLI args (replaces hardcoded per-race scripts)
-- `simulate_2026_australia.py` — Monte Carlo simulation of 2026 Australian GP (Stage 6 + Stage 8 + Stage 9 + Composite)
-- `simulate_2026_japan.py` — Monte Carlo simulation of 2026 Japanese GP (Stage 6 + Stage 8 + Stage 9 + Composite)
-- `dashboard.py` — Multi-race Streamlit dashboard, auto-discovers `data/sim_*.json` files
+- `simulate_race.py` — General-purpose Monte Carlo race simulation with CLI args
+- `config_2026.py` — Centralized 2026 season constants (drivers, constructors, calendar, slugs)
+- `generate_2026_data.py` — Appends 2026 race results/qualifying to Ergast CSVs
 - `generate_2025_data.py` — Scrapes 2025 F1 season data and appends to Ergast CSVs
+- `dashboard.py` — Multi-race Streamlit dashboard, auto-discovers `data/sim_*.json` files
 
 ### Models (`models/`)
 Only the production models are kept here. Stage 3 serves as the shared utility hub.
@@ -29,12 +28,16 @@ Only the production models are kept here. Stage 3 serves as the shared utility h
 ### Archive (`archive/`)
 Deprecated models (stages 1, 2, 4, 5, 7) and one-off evaluation/prediction scripts preserved for reference.
 - `archive/models/` — stage1 (baseline), stage2 (driver pooling), stage4 (recency grid), stage5 (circuit), stage7 (HMM)
-- `archive/` — evaluation scripts, predict scripts, retrospective simulations, notebook, old configs
+- `archive/` — evaluation scripts, predict scripts, retrospective simulations, notebook, old configs, NUTS sampling scripts
+
+### Skills (`.claude/skills/`)
+- `predict-race.md` — Automated workflow for predicting the next F1 race (data check, simulation, analysis, deploy)
 
 ## Model Architecture
 - **State space**: 0=DNF, 1-20=positions, 21=START (first race of season)
 - **Transition matrix shape**: (22 prev states) x (21 outcomes) — prev includes START, outcomes are DNF + P1-P20
 - Dirichlet-Multinomial conjugate updates (Stages 3/6), Plackett-Luce (Stages 8/9)
+- **Inference**: MAP via L-BFGS-B (all models). NUTS sampling was removed from Stage 9 — MAP retraining each race is preferred.
 - Training data: 2015-2025 (11 years) for 2026 predictions
 - Hyperparameters optimized via leave-last-year-out CV
 
@@ -54,6 +57,7 @@ stage3_constructor.py  (shared: F1DataLoader, constants, prepare_transitions, co
 ### Driver IDs
 - Max Verstappen = **830** (NOT 50, which is his father Jos Verstappen)
 - New 2025 rookies: Antonelli=863, Hadjar=864, Bortoleto=865
+- New 2026 rookie: Lindblad=866
 
 ### Constructor IDs (2026 season)
 McLaren=1, Williams=3, Ferrari=6, Red Bull=9, Audi=15 (was Sauber), Aston Martin=117, Mercedes=131, Haas=210, Alpine=214, Racing Bulls=215, Cadillac=216 (new)
@@ -61,27 +65,35 @@ McLaren=1, Williams=3, Ferrari=6, Red Bull=9, Audi=15 (was Sauber), Aston Martin
 ### Recency Weighting
 - **Key insight**: Recency weighting helps out-of-sample prediction, not in-sample fit. You cannot learn temporal decay from training data alone — you need held-out future data (leave-last-year-out CV).
 - Stage 6 uses geometric decay `w^(ref_year - y)` on constructor prior only; w=0.7 consistently selected.
-- Stage 6 needs ≥10 years of training data for stable kappa_c estimation.
+- Stage 6 needs >=10 years of training data for stable kappa_c estimation.
 
 ### Model Comparison Summary
 | Model | Best At | LL/race | Avg T3 | Weakness |
 |-------|---------|---------|--------|----------|
 | Stage 6 | Calibration | -59.0 | 1.32 | Lower ranking accuracy |
-| Stage 8 | Ranking | -94.7 | 1.36 | Overconcentrates probability, poor calibration |
+| Stage 8 | Ranking | -94.7 | 1.36 | Overconcentrates probability, often degenerate |
 | Stage 9 | Top-3 prediction | -60.0 | 1.59 | Slower to train |
-| Ensemble | Balance | — | — | Blends strengths of all three |
+| Composite | Balance | — | — | Blends Stage 6 + Stage 9 (Stage 8 excluded when degenerate) |
 
 ### Why Archived Models Were Dropped
 - **Stage 1**: Baseline only, can't differentiate drivers
 - **Stage 2**: Superseded by Stage 6 (no constructor effect)
-- **Stage 4**: Parameter collapse (lambda→0, kappa_grid→0), degenerates to Stage 3
+- **Stage 4**: Parameter collapse (lambda->0, kappa_grid->0), degenerates to Stage 3
 - **Stage 5**: Circuit prior interacts destructively with constructor recency weighting
 - **Stage 7 (HMM)**: Too coarse — 4 tiers can't distinguish within-constructor driver variation
 
-## Data Notes
+## Data Pipeline
+
+### Adding new race results
+1. Add qualifying grid to `QUALIFYING_RESULTS` dict in `generate_2026_data.py`
+2. Add race results to `RACE_RESULTS` dict in `generate_2026_data.py`
+3. Run `uv run python generate_2026_data.py` (appends to CSVs, safe to run multiple times)
+4. Run `uv run python simulate_race.py --season 2026 --round N` to generate predictions
+
+### Data Notes
 - Original Ergast data covers 1950-2024
 - 2025 data generated via `generate_2025_data.py` (scrapes Wikipedia)
-- The 2025 data is appended to the original CSVs — to regenerate, remove 2025 entries first
+- 2026 data managed via `generate_2026_data.py` (manually curated per-race results)
 - Grid positions for qualifying come from `qualifying.csv` (position column)
 - Simulation results stored as JSON in `data/sim_*.json` (consumed by dashboard)
 
@@ -90,20 +102,20 @@ McLaren=1, Williams=3, Ferrari=6, Red Bull=9, Audi=15 (was Sauber), Aston Martin
 # Round 1 (auto-detects race metadata and roster from CSVs):
 uv run python simulate_race.py --season 2026 --round 1
 
-# Round 2 (uses R1 results as starting state):
-uv run python simulate_race.py --season 2026 --round 2
+# Round 3 (uses R2 results as starting state):
+uv run python simulate_race.py --season 2026 --round 3
+
+# Explicit metadata for future races not yet in CSVs:
+uv run python simulate_race.py --season 2026 --round 3 \
+    --race-name "Japanese Grand Prix" --circuit "Suzuka Circuit" --date 2026-03-29
 
 # With roster override for new/changed drivers:
 uv run python simulate_race.py --season 2026 --round 1 --roster data/roster_2026.json
-
-# Explicit metadata for future races not yet in CSVs:
-uv run python simulate_race.py --season 2026 --round 1 \
-    --race-name "Australian Grand Prix" --circuit "Albert Park, Melbourne" --date 2026-03-08
 ```
 - Auto-detects race name, circuit, date from `races.csv` + `circuits.csv`
 - Auto-detects driver roster from most recent race results
 - For round > 1, uses previous round finishing positions as starting state
-- Outputs `data/sim_{season}_{race_slug}.json` for the dashboard
+- Outputs `data/sim_{season}_{race_slug}.json` for the dashboard (slugs from `config_2026.py`)
 - `--roster` accepts a JSON override: `{"driver_id": {"constructor_id": N, "name": "...", "abbreviation": "..."}}`
 
 ## Dashboard
