@@ -420,6 +420,8 @@ def parse_args():
     parser.add_argument("--output", type=str, default=None, help="Output JSON path (auto-generated)")
     parser.add_argument("--stages", type=str, default="stage6,stage8,stage9",
                         help="Comma-separated model stages (default: stage6,stage8,stage9)")
+    parser.add_argument("--blind-state", action="store_true",
+                        help="Force all drivers to START state, ignoring any prior in-season results")
     return parser.parse_args()
 
 
@@ -453,8 +455,12 @@ def main():
     driver_ids = list(drivers_dict.keys())
 
     # --- Starting states ---
-    prev_positions = get_prev_positions(season, round_num, driver_ids)
-    state_desc = "START" if round_num <= 1 else f"Round {round_num - 1} results"
+    if args.blind_state:
+        prev_positions = {did: START for did in driver_ids}
+        state_desc = "START (blind — ignoring prior in-season results)"
+    else:
+        prev_positions = get_prev_positions(season, round_num, driver_ids)
+        state_desc = "START" if round_num <= 1 else f"Round {round_num - 1} results"
 
     print("=" * 70)
     print(f"{season} {race_name} — RACE SIMULATION")
