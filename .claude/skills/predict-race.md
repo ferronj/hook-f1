@@ -73,7 +73,8 @@ uv run python simulate_race.py --season {year} --round {target_round} \
 
 Get race_name, circuit, and date from `config_2026.py` `CALENDAR_2026[target_round]`.
 
-This outputs `data/sim_{year}_{slug}.json` for the dashboard.
+This outputs `data/sim_{year}_{slug}.json` for the dashboard. The simulation script
+runs the quantitative models only — Stage 6 + Stage 9 + Composite blend.
 
 ## Step 6: Current Form Analysis
 
@@ -82,7 +83,43 @@ Web search for recent F1 news to provide context:
 - "{year} {race_name} Grand Prix preview"
 - Team performance trends, reliability issues, weather forecast
 
-Summarize key narratives for the user alongside the model predictions.
+Capture the key facts for the next step's agent prediction.
+
+## Step 6b: Agent Prediction (only when invoked by Claude)
+
+After running the simulation, layer an agent prediction onto the sim JSON.
+Skip this step if the user is running the simulation themselves — they expect
+model-only output.
+
+1. Synthesize the web-search facts and model predictions into your own podium
+   call. Use judgment that the quantitative models can't apply (e.g.: weekend-
+   specific signals like sprint pole, weather risk, fresh upgrades, reliability
+   concerns).
+2. Write `agent_pred_<slug>.json` matching the schema in `add_agent_prediction.py`:
+   ```json
+   {
+     "model": "claude-opus-4-7",
+     "rationale": "Markdown explanation",
+     "context": ["fact 1", "fact 2"],
+     "podium": [
+       {"rank": 1, "driver_id": 857, "name": "Oscar Piastri", "team": "McLaren", "abbreviation": "PIA"},
+       {"rank": 2, ...},
+       {"rank": 3, ...}
+     ],
+     "top10": [...]
+   }
+   ```
+3. Merge:
+   ```bash
+   uv run python add_agent_prediction.py \
+       --sim data/sim_{year}_{slug}.json \
+       --prediction agent_pred_{slug}.json
+   ```
+4. Optionally delete `agent_pred_{slug}.json` after merging — the canonical
+   record lives in the sim JSON.
+
+The dashboard auto-detects the new `agent_prediction` block on next load.
+If this step is skipped, the dashboard renders without the agent section.
 
 ## Step 7: Verify Dashboard
 

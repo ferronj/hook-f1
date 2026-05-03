@@ -62,6 +62,9 @@ MODEL_LABELS = {k: data["models"][k]["name"] for k in MODEL_KEYS}
 # Determine which are "stage" models (not composite) for comparison charts
 STAGE_KEYS = [k for k in MODEL_KEYS if k != "composite"]
 
+# Optional agent (LLM-authored) prediction — present only if added externally
+AGENT = data.get("agent_prediction")
+
 
 def get_drivers_df(model_key):
     drivers = data["models"][model_key]["drivers"]
@@ -75,6 +78,8 @@ st.sidebar.markdown("---")
 st.sidebar.markdown(f"**{len(races)}** race(s) available")
 st.sidebar.markdown(f"**{len(STAGE_KEYS)}** stage models + composite")
 st.sidebar.markdown(f"Training: {data['training_years']}")
+if AGENT:
+    st.sidebar.markdown(f"🤖 Agent forecast: **{AGENT.get('model', 'Claude')}**")
 
 # =====================================================================
 # HEADER
@@ -133,6 +138,51 @@ with story_cols[3]:
         st.markdown(f"Ranked {best_ud['rank']}th overall")
         st.markdown(f"P(podium): {best_ud['p_podium']:.1%}")
         st.markdown(f"{best_ud['team']}")
+
+# =====================================================================
+# AGENT FORECAST (optional — only rendered if present in the sim JSON)
+# =====================================================================
+if AGENT:
+    st.divider()
+    st.header("🤖 Agent Forecast")
+    meta_bits = []
+    if AGENT.get("model"):
+        meta_bits.append(f"**Model**: {AGENT['model']}")
+    if AGENT.get("generated_at"):
+        meta_bits.append(f"**Generated**: {AGENT['generated_at']}")
+    if meta_bits:
+        st.caption(" · ".join(meta_bits))
+    if AGENT.get("description"):
+        st.markdown(AGENT["description"])
+
+    podium = AGENT.get("podium", [])
+    if len(podium) >= 3:
+        agent_cols = st.columns(3)
+        for i, col in enumerate(agent_cols):
+            entry = podium[i]
+            with col:
+                pos_label = ["🥇 P1", "🥈 P2", "🥉 P3"][i]
+                st.metric(label=pos_label, value=entry.get("name", "—"))
+                team_line = entry.get("team", "")
+                abbr = entry.get("abbreviation")
+                if abbr:
+                    team_line = f"{abbr} · {team_line}" if team_line else abbr
+                st.caption(team_line)
+
+    if AGENT.get("top10"):
+        with st.expander("Agent Top 10"):
+            top10_df = pd.DataFrame(AGENT["top10"])
+            cols = [c for c in ["rank", "name", "team", "abbreviation"] if c in top10_df.columns]
+            st.dataframe(top10_df[cols], use_container_width=True, hide_index=True)
+
+    if AGENT.get("rationale"):
+        with st.expander("Rationale"):
+            st.markdown(AGENT["rationale"])
+
+    if AGENT.get("context"):
+        with st.expander("Context (web-search facts used)"):
+            for item in AGENT["context"]:
+                st.markdown(f"- {item}")
 
 # =====================================================================
 # MODEL SELECTOR
@@ -522,22 +572,21 @@ recency-weighted constructor transition matrices. Geometric decay w=0.70 selecte
 leave-last-year-out CV. Best calibrated model (avg LL/race = -59.0 across 4 eras).
 Trained on 2015-2025 (11 years needed for stable kappa_c).
 
-**Stage 8: Time-Varying Plackett-Luce** — Time-varying driver/constructor strengths
-with exponential smoothing and Plackett-Luce ranking model. Best Spearman rho (0.800)
-for ranking accuracy, but tends to overconcentrate probability on top performers.
-MC sampling (3000 rankings) for position marginals.
-
 **Stage 9: Bayesian State-Space** — Random walk on driver and constructor log-strengths
 observed via Plackett-Luce rankings. MAP inference via L-BFGS-B with analytic gradients.
 Best top-3 prediction accuracy (1.59/3 correct). Good calibration (LL/race = -60.0).
 
 **Composite** — Equal-weight probability blend of all active stage models, renormalized.
-Combines Stage 6's calibration, Stage 8's ranking, and Stage 9's top-3 accuracy.
+Combines Stage 6's calibration with Stage 9's top-3 accuracy.
+
+**Agent Forecast** (optional) — Layered on top by Claude when explicitly invoked. Pulls
+in current-form context from a web search and produces a podium pick alongside the
+quantitative models. Absent when the simulation is run without agent involvement.
 
 **Caveats**:
 - 2026 regulation changes are not modeled — predictions assume continuity from 2025.
 - Cadillac (new team) has no constructor history; predictions rely on driver priors only.
 - Models cannot anticipate pre-season testing results or development trajectory.
-- Stage 8 and 9 overweight recent McLaren/Verstappen dominance.
+- Stage 9 overweights recent McLaren/Verstappen dominance.
 - Stage 6 with broad training window (2015-2025) may underweight recent form.
     """)

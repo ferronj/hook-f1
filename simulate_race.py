@@ -36,7 +36,6 @@ from stage6_recency_constructor import (
     prepare_transitions as s6_prepare,
     START, N_OUTCOMES,
 )
-from stage8_plackett_luce import TimeVaryingPlackettLuceF1
 from stage9_bayesian_ss import BayesianStateSpaceF1
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -73,18 +72,6 @@ MODEL_REGISTRY = {
         "meta": {
             "name": "Stage 6: Year-Weighted Constructor",
             "description": "Dirichlet-Multinomial with recency-weighted constructor priors. Best calibrated model (LL/race = -59.0).",
-        },
-    },
-    "stage8": {
-        "class": TimeVaryingPlackettLuceF1,
-        "kwargs": {
-            "alpha_candidates": (0.9, 0.95, 0.99),
-            "n_mc_samples": 3000,
-        },
-        "params_fn": lambda m: {"alpha": m.alpha_},
-        "meta": {
-            "name": "Stage 8: Time-Varying Plackett-Luce",
-            "description": "Time-varying driver strengths with Plackett-Luce ranking model. Best Spearman rho (0.800) but overconcentrates probability.",
         },
     },
     "stage9": {
@@ -418,8 +405,8 @@ def parse_args():
     parser.add_argument("--n-sims", type=int, default=10000, help="Number of MC simulations (default: 10000)")
     parser.add_argument("--roster", type=str, default=None, help="Path to roster override JSON")
     parser.add_argument("--output", type=str, default=None, help="Output JSON path (auto-generated)")
-    parser.add_argument("--stages", type=str, default="stage6,stage8,stage9",
-                        help="Comma-separated model stages (default: stage6,stage8,stage9)")
+    parser.add_argument("--stages", type=str, default="stage6,stage9",
+                        help="Comma-separated model stages (default: stage6,stage9)")
     parser.add_argument("--blind-state", action="store_true",
                         help="Force all drivers to START state, ignoring any prior in-season results")
     return parser.parse_args()
