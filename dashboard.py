@@ -8,6 +8,7 @@ Supports any number of stage models + composite per race.
 """
 
 import json
+from datetime import date as _date_cls
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -41,6 +42,286 @@ races = discover_races()
 
 if not races:
     st.error("No simulation files found in `data/sim_*.json`.")
+    st.stop()
+
+
+# =====================================================================
+# SCORING HELPERS — shared by Actuals tab and Season Summary view
+# =====================================================================
+@st.cache_data
+def load_results_csv():
+    """Load races + results + drivers CSVs once. Cached across renders."""
+    data_dir = Path(__file__).parent / "data"
+    races_df = pd.read_csv(data_dir / "races.csv")
+    results_df = pd.read_csv(data_dir / "results.csv")
+    drivers_df = pd.read_csv(data_dir / "drivers.csv")
+    drivers_df["full_name"] = drivers_df["forename"] + " " + drivers_df["surname"]
+    return races_df, results_df, drivers_df
+
+
+def get_actuals(sim_data):
+    """Ordered list of finishers for the sim's race, or None if not yet scored.
+
+    Matches races.csv on date — older sim files (e.g. Australia) don't carry
+    season/round in JSON, but date is always present and unique per race.
+    """
+    races_df, results_df, drivers_df = load_results_csv()
+    race_row = races_df[races_df["date"] == sim_data["date"]]
+    if race_row.empty:
+        return None
+    race_id = int(race_row.iloc[0]["raceId"])
+    race_results = results_df[results_df["raceId"] == race_id]
+    if race_results.empty:
+        return None
+    race_results = race_results.sort_values("positionOrder")
+    sim_roster = {
+        d["driver_id"]: d
+        for d in next(iter(sim_data["models"].values()))["drivers"]
+    }
+    name_fallback = dict(zip(drivers_df["driverId"], drivers_df["full_name"]))
+    out = []
+    for _, row in race_results.iterrows():
+        did = int(row["driverId"])
+        roster = sim_roster.get(did, {})
+        out.append({
+            "position_order": int(row["positionOrder"]),
+            "position_text": str(row["positionText"]),
+            "driver_id": did,
+            "name": roster.get("name", name_fallback.get(did, f"#{did}")),
+            "abbreviation": roster.get("abbreviation", ""),
+            "team": roster.get("team", ""),
+        })
+    return out
+
+
+def score_models_for_race(sim_data, actuals):
+    """Score every model (and optional agent) for one race.
+
+    Returns list of dicts: model_key, label, pred_top3 (names), top3_hits (0-3),
+    top10_overlap (0-10 or None for agent without top10), mae (float|nan),
+    spearman (float|nan). Used by the per-race Actuals section and the
+    season-summary scorecard.
+    """
+    if not actuals:
+        return []
+    actual_top3_names = {a["name"] for a in actuals[:3]}
+    actual_top10_names = {a["name"] for a in actuals[:10]}
+    rows = []
+    for mk, mdata in sim_data["models"].items():
+        model_drivers = mdata["drivers"]
+        pred_top10 = [d["name"] for d in model_drivers[:10]]
+        pred_top3 = pred_top10[:3]
+        rank_by_did = {d["driver_id"]: i + 1 for i, d in enumerate(model_drivers)}
+        actual_pos, pred_pos = [], []
+        for a in actuals:
+            r = rank_by_did.get(a["driver_id"])
+            if r is not None:
+                actual_pos.append(a["position_order"])
+                pred_pos.append(r)
+        n = len(actual_pos)
+        if n > 1:
+            ap, pp = np.array(actual_pos), np.array(pred_pos)
+            mae = float(np.mean(np.abs(ap - pp)))
+            spearman = 1 - 6 * np.sum((ap - pp) ** 2) / (n * (n**2 - 1))
+        else:
+            mae = spearman = float("nan")
+        rows.append({
+            "model_key": mk,
+            "label": mdata["name"],
+            "pred_top3": pred_top3,
+            "top3_hits": sum(name in actual_top3_names for name in pred_top3),
+            "top10_overlap": sum(name in actual_top10_names for name in pred_top10),
+            "mae": mae,
+            "spearman": spearman,
+        })
+
+    agent = sim_data.get("agent_prediction")
+    if agent and agent.get("podium"):
+        agent_pod = [p["name"] for p in agent["podium"][:3]]
+        agent_top10 = [p["name"] for p in agent.get("top10", [])][:10]
+        rows.append({
+            "model_key": "agent",
+            "label": f"🤖 {agent.get('model', 'Agent')}",
+            "pred_top3": agent_pod,
+            "top3_hits": sum(name in actual_top3_names for name in agent_pod),
+            "top10_overlap": (
+                sum(name in actual_top10_names for name in agent_top10)
+                if agent_top10 else None
+            ),
+            "mae": float("nan"),
+            "spearman": float("nan"),
+        })
+    return rows
+
+
+# =====================================================================
+# SEASON SUMMARY VIEW — cross-race scorecard + next-race preview
+# =====================================================================
+def render_season_summary(races):
+    st.title("📅 Season Summary")
+    st.caption("Cross-race model performance plus next-race preview")
+
+    race_list = sorted(races.values(), key=lambda d: d["date"])
+
+    scored_races = []
+    for sim in race_list:
+        actuals = get_actuals(sim)
+        if not actuals:
+            continue
+        scored_races.append((sim, score_models_for_race(sim, actuals)))
+
+    today_iso = _date_cls.today().isoformat()
+    future = [r for r in race_list if r["date"] >= today_iso]
+    next_race = future[0] if future else race_list[-1]
+
+    col_left, col_right = st.columns([2, 1])
+
+    with col_left:
+        st.header("📈 Per-race scorecard")
+        if not scored_races:
+            st.info("No scored races yet. Add race results to see the scorecard.")
+        else:
+            metric_choice = st.selectbox(
+                "Metric",
+                ["Top-3 hits", "Top-10 overlap", "MAE (positions)", "Spearman ρ"],
+                index=0,
+            )
+            metric_field = {
+                "Top-3 hits": "top3_hits",
+                "Top-10 overlap": "top10_overlap",
+                "MAE (positions)": "mae",
+                "Spearman ρ": "spearman",
+            }[metric_choice]
+
+            long_rows = []
+            for sim, scored in scored_races:
+                for row in scored:
+                    val = row[metric_field]
+                    if val is None or (isinstance(val, float) and np.isnan(val)):
+                        continue
+                    long_rows.append({
+                        "Round": sim.get("round"),
+                        "Race": sim["race"].replace(" Grand Prix", "").replace("2026 ", ""),
+                        "Date": sim["date"],
+                        "Model": row["label"],
+                        "Value": val,
+                    })
+            long_df = pd.DataFrame(long_rows)
+            if long_df.empty:
+                st.info(f"No data available for '{metric_choice}' yet.")
+            else:
+                fig = go.Figure()
+                for model_label in long_df["Model"].unique():
+                    sub = long_df[long_df["Model"] == model_label].sort_values("Round")
+                    short = model_label.split(":")[0].strip() if ":" in model_label else model_label
+                    fig.add_trace(go.Scatter(
+                        x=sub["Round"],
+                        y=sub["Value"],
+                        mode="lines+markers",
+                        name=short,
+                        text=sub["Race"],
+                        hovertemplate=(
+                            "<b>%{text}</b> (R%{x})<br>"
+                            + short + ": %{y:.2f}<extra></extra>"
+                        ),
+                    ))
+                higher_better = metric_field in ("top3_hits", "top10_overlap", "spearman")
+                fig.update_layout(
+                    title=f"{metric_choice} by round",
+                    xaxis_title="Round",
+                    yaxis_title=metric_choice
+                    + (" (higher is better)" if higher_better else " (lower is better)"),
+                    height=420,
+                    margin=dict(l=0, r=10, t=40, b=40),
+                    hovermode="x unified",
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+                pivot = long_df.pivot_table(
+                    index=["Round", "Race"],
+                    columns="Model",
+                    values="Value",
+                    aggfunc="first",
+                ).reset_index().sort_values("Round")
+                fmt = (
+                    (lambda v: "—" if pd.isna(v) else f"{int(v)}")
+                    if metric_field in ("top3_hits", "top10_overlap")
+                    else (lambda v: "—" if pd.isna(v) else f"{v:.2f}")
+                )
+                for col in pivot.columns:
+                    if col in ("Round", "Race"):
+                        continue
+                    pivot[col] = pivot[col].map(fmt)
+                st.markdown("**Per-race table:**")
+                st.dataframe(pivot, use_container_width=True, hide_index=True)
+
+                st.markdown("**Season totals:**")
+                if metric_field in ("top3_hits", "top10_overlap"):
+                    totals = long_df.groupby("Model")["Value"].sum().sort_values(ascending=False)
+                    n_races = long_df["Round"].nunique()
+                    cap = 3 if metric_field == "top3_hits" else 10
+                    totals_df = pd.DataFrame({
+                        "Model": totals.index,
+                        f"Total {metric_choice}": [
+                            f"{int(v)}/{cap * n_races}" for v in totals.values
+                        ],
+                        "Avg per race": [f"{v / n_races:.2f}" for v in totals.values],
+                    })
+                else:
+                    totals = long_df.groupby("Model")["Value"].mean().sort_values(
+                        ascending=(metric_field == "mae")
+                    )
+                    totals_df = pd.DataFrame({
+                        "Model": totals.index,
+                        f"Avg {metric_choice}": [f"{v:.2f}" for v in totals.values],
+                    })
+                st.dataframe(totals_df, use_container_width=True, hide_index=True)
+
+    with col_right:
+        is_future = next_race["date"] >= today_iso
+        st.header("🔮 Next race" if is_future else "🏁 Latest race")
+        st.subheader(next_race["race"])
+        st.caption(
+            f"{next_race['circuit']} · {next_race['date']} · R{next_race.get('round', '?')}"
+        )
+
+        comp_key = (
+            "composite" if "composite" in next_race["models"]
+            else list(next_race["models"].keys())[-1]
+        )
+        comp_drivers = next_race["models"][comp_key]["drivers"]
+        st.markdown(f"**Model podium** ({next_race['models'][comp_key]['name']}):")
+        for i, d in enumerate(comp_drivers[:3]):
+            medal = ["🥇", "🥈", "🥉"][i]
+            st.markdown(
+                f"{medal} **{d['name']}** ({d['team']}) · "
+                f"P(win) {d['p_win']:.1%} · P(podium) {d['p_podium']:.1%}"
+            )
+
+        agent = next_race.get("agent_prediction")
+        if agent:
+            st.markdown("---")
+            st.markdown(f"**🤖 Agent forecast** ({agent.get('model', 'Claude')}):")
+            if agent.get("description"):
+                st.markdown(agent["description"])
+            for i, p in enumerate(agent.get("podium", [])[:3]):
+                medal = ["🥇", "🥈", "🥉"][i]
+                team = p.get("team", "")
+                st.markdown(f"{medal} **{p['name']}**" + (f" ({team})" if team else ""))
+
+
+# =====================================================================
+# SIDEBAR — view switcher
+# =====================================================================
+view = st.sidebar.radio(
+    "View",
+    ["Race detail", "Season summary"],
+    index=0,
+)
+st.sidebar.markdown("---")
+
+if view == "Season summary":
+    render_season_summary(races)
     st.stop()
 
 # =====================================================================
@@ -183,6 +464,46 @@ if AGENT:
         with st.expander("Context (web-search facts used)"):
             for item in AGENT["context"]:
                 st.markdown(f"- {item}")
+
+# =====================================================================
+# ACTUALS vs. PREDICTION (conditional — only renders if race has results)
+# =====================================================================
+actuals = get_actuals(data)
+
+if actuals:
+    st.divider()
+    st.header("🎯 Actuals vs. Prediction")
+    actual_top3 = actuals[:3]
+    actual_top3_names = {a["name"] for a in actual_top3}
+    actual_top10_names = {a["name"] for a in actuals[:10]}
+    st.markdown(
+        "Actual podium: "
+        + ", ".join(f"**{a['name']}** ({a['team']})" for a in actual_top3)
+    )
+
+    scored = score_models_for_race(data, actuals)
+
+    score_cols = st.columns(min(len(scored), 4))
+    for i, row in enumerate(scored):
+        with score_cols[i % len(score_cols)]:
+            short = row["label"].split(":")[0].strip() if ":" in row["label"] else row["label"]
+            st.subheader(short)
+            for j, name in enumerate(row["pred_top3"]):
+                marker = "✅" if name in actual_top3_names else "❌"
+                st.markdown(f"P{j+1}: {marker} {name}")
+
+    score_rows = []
+    for row in scored:
+        ov = row["top10_overlap"]
+        score_rows.append({
+            "Model": row["label"],
+            "Top-3 Hits": f"{row['top3_hits']}/3",
+            "Top-10 Overlap": "—" if ov is None else f"{ov}/10",
+            "MAE (positions)": "—" if np.isnan(row["mae"]) else f"{row['mae']:.2f}",
+            "Spearman ρ": "—" if np.isnan(row["spearman"]) else f"{row['spearman']:.2f}",
+        })
+    st.markdown("**Per-model performance on this race:**")
+    st.dataframe(pd.DataFrame(score_rows), use_container_width=True, hide_index=True)
 
 # =====================================================================
 # MODEL SELECTOR
