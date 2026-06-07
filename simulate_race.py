@@ -120,12 +120,16 @@ def load_race_metadata(season, round_num):
     return race_row["name"], circuit_str, str(race_row["date"])
 
 
-def build_roster(season, round_num, roster_override_path=None):
+def build_roster(season, round_num, roster_override_path=None, roster_replace=False):
     """Auto-detect driver roster from results data.
 
     Returns:
         drivers_dict: {driver_id: (constructor_id, full_name, abbreviation)}
         constructor_names: {constructor_id: name}
+
+    When roster_replace=True and a roster JSON is provided, the auto-detected
+    roster is fully replaced (used for R1 of a new season where the prev-year
+    fallback carries over drivers who are no longer on the grid).
     """
     results_df = pd.read_csv(DATA_DIR / "results.csv")
     races_df = pd.read_csv(DATA_DIR / "races.csv")
@@ -183,6 +187,9 @@ def build_roster(season, round_num, roster_override_path=None):
     if roster_override_path:
         with open(roster_override_path) as f:
             override = json.load(f)
+        if roster_replace:
+            drivers_dict = {}
+            constructor_names = {}
         for did_str, info in override.items():
             did = int(did_str)
             drivers_dict[did] = (
@@ -193,6 +200,31 @@ def build_roster(season, round_num, roster_override_path=None):
             cid = info["constructor_id"]
             if "constructor_name" in info:
                 constructor_names[cid] = info["constructor_name"]
+
+        if roster_replace:
+            # Backfill any constructor names we don't have via constructors.csv
+            missing = {v[0] for v in drivers_dict.values()} - set(constructor_names)
+            if missing:
+                cdf = pd.read_csv(DATA_DIR / "constructors.csv")
+                for cid in missing:
+                    row = cdf[cdf["constructorId"] == cid]
+                    constructor_names[cid] = (
+                        row.iloc[0]["name"] if not row.empty else f"Constructor {cid}"
+                    )
+
+    # Season-aware name normalization. constructors.csv carries historical
+    # names ("Sauber", "RB F1 Team") and drivers.csv has accented forms
+    # ("Hülkenberg", "Pérez"). Prefer the config's friendly names so dashboard
+    # team colors match and naming stays consistent across rounds.
+    if season == 2026:
+        from config_2026 import DRIVERS_2026 as _D26, CONSTRUCTOR_NAMES as _C26
+        for did, (cid, _name, _abbr) in list(drivers_dict.items()):
+            if did in _D26:
+                _, cfg_name, cfg_abbr = _D26[did]
+                drivers_dict[did] = (cid, cfg_name, cfg_abbr)
+        for cid in list(constructor_names.keys()):
+            if cid in _C26:
+                constructor_names[cid] = _C26[cid]
 
     return drivers_dict, constructor_names
 
@@ -404,6 +436,8 @@ def parse_args():
     parser.add_argument("--train-end", type=int, default=None, help="Training end year (default: season-1)")
     parser.add_argument("--n-sims", type=int, default=10000, help="Number of MC simulations (default: 10000)")
     parser.add_argument("--roster", type=str, default=None, help="Path to roster override JSON")
+    parser.add_argument("--roster-replace", action="store_true",
+                        help="Fully replace auto-detected roster with --roster JSON (default merges)")
     parser.add_argument("--output", type=str, default=None, help="Output JSON path (auto-generated)")
     parser.add_argument("--stages", type=str, default="stage6,stage9",
                         help="Comma-separated model stages (default: stage6,stage9)")
@@ -438,7 +472,9 @@ def main():
         sys.exit(1)
 
     # --- Driver roster ---
-    drivers_dict, constructor_names = build_roster(season, round_num, args.roster)
+    drivers_dict, constructor_names = build_roster(
+        season, round_num, args.roster, roster_replace=args.roster_replace
+    )
     driver_ids = list(drivers_dict.keys())
 
     # --- Starting states ---
