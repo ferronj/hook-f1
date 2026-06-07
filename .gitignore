@@ -24,3 +24,7 @@ Thumbs.db
 # NUTS/sampling artifacts
 *.nc
 *.pkl
+
+# Claude Code session artifacts (per-session worktrees and runtime locks)
+.claude/worktrees/
+.claude/scheduled_tasks.lock
