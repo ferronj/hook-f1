@@ -307,6 +307,30 @@ QUALIFYING_RESULTS = {
         ("Fernando Alonso", "Aston Martin", 21),
         ("Lance Stroll", "Aston Martin", 22),
     ],
+    7: [  # Barcelona-Catalunya Grand Prix
+        ("George Russell", "Mercedes", 1),
+        ("Lewis Hamilton", "Ferrari", 2),
+        ("Kimi Antonelli", "Mercedes", 3),
+        ("Lando Norris", "McLaren", 4),
+        ("Max Verstappen", "Red Bull Racing", 5),
+        ("Isack Hadjar", "Red Bull Racing", 6),
+        ("Oscar Piastri", "McLaren", 7),
+        ("Liam Lawson", "Racing Bulls", 8),
+        ("Nico Hulkenberg", "Audi", 9),
+        ("Charles Leclerc", "Ferrari", 10),  # crashed in Q3, classified P10
+        ("Arvid Lindblad", "Racing Bulls", 11),
+        ("Gabriel Bortoleto", "Audi", 12),
+        ("Franco Colapinto", "Alpine", 13),
+        ("Pierre Gasly", "Alpine", 14),
+        ("Oliver Bearman", "Haas F1 Team", 15),
+        ("Carlos Sainz", "Williams", 16),
+        ("Esteban Ocon", "Haas F1 Team", 17),
+        ("Alexander Albon", "Williams", 18),
+        ("Sergio Perez", "Cadillac", 19),
+        ("Valtteri Bottas", "Cadillac", 20),
+        ("Lance Stroll", "Aston Martin", 21),
+        ("Fernando Alonso", "Aston Martin", 22),  # pit-lane start
+    ],
 }
 
 # ============================================================
@@ -459,6 +483,30 @@ RACE_RESULTS = {
         ("Oliver Bearman", "Haas F1 Team", 20, "R", 27, "\\N", 0, 130),
         ("Valtteri Bottas", "Cadillac", 21, "R", 15, "\\N", 0, 130),
         ("Max Verstappen", "Red Bull Racing", 22, "R", 0, "\\N", 0, 130),
+    ],
+    7: [  # Barcelona-Catalunya Grand Prix (actual results; Colapinto +10s yellow-flag penalty dropped him 8th->10th)
+        ("Lewis Hamilton", "Ferrari", 1, "1", 66, "1:32:28.105", 25, 1),
+        ("George Russell", "Mercedes", 2, "2", 66, "+19.561", 18, 1),
+        ("Lando Norris", "McLaren", 3, "3", 66, "+23.719", 15, 1),
+        ("Max Verstappen", "Red Bull Racing", 4, "4", 66, "+40.497", 12, 1),
+        ("Oscar Piastri", "McLaren", 5, "5", 66, "+58.661", 10, 1),
+        ("Isack Hadjar", "Red Bull Racing", 6, "6", 65, "+1 Lap", 8, 1),
+        ("Pierre Gasly", "Alpine", 7, "7", 65, "+1 Lap", 6, 1),
+        ("Liam Lawson", "Racing Bulls", 8, "8", 65, "+1 Lap", 4, 1),
+        ("Arvid Lindblad", "Racing Bulls", 9, "9", 65, "+1 Lap", 2, 1),
+        ("Franco Colapinto", "Alpine", 10, "10", 65, "+1 Lap", 1, 1),
+        ("Gabriel Bortoleto", "Audi", 11, "11", 64, "+2 Laps", 0, 1),
+        ("Carlos Sainz", "Williams", 12, "12", 64, "+2 Laps", 0, 1),
+        ("Esteban Ocon", "Haas F1 Team", 13, "13", 64, "+2 Laps", 0, 1),
+        ("Sergio Perez", "Cadillac", 14, "14", 63, "+3 Laps", 0, 1),
+        ("Charles Leclerc", "Ferrari", 15, "R", 62, "\\N", 0, 130),  # hydraulics, classified
+        ("Kimi Antonelli", "Mercedes", 16, "R", 61, "\\N", 0, 130),  # engine, classified
+        ("Oliver Bearman", "Haas F1 Team", 17, "R", 60, "\\N", 0, 130),  # electrical, classified
+        ("Alexander Albon", "Williams", 18, "NC", 55, "\\N", 0, 130),  # not classified
+        ("Fernando Alonso", "Aston Martin", 19, "R", 37, "\\N", 0, 130),  # battery
+        ("Nico Hulkenberg", "Audi", 20, "R", 29, "\\N", 0, 130),  # safety switch
+        ("Valtteri Bottas", "Cadillac", 21, "R", 15, "\\N", 0, 130),  # overheating
+        ("Lance Stroll", "Aston Martin", 22, "R", 5, "\\N", 0, 130),  # gearbox
     ],
 }
 
